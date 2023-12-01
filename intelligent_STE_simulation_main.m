@@ -54,19 +54,19 @@ sigma.cii = 0.5;
 % Initialisation and parameters of the mobile sensor
 StartingPosition = [2 2 4]; % Starting position [x,y,z]
 % change 
-% StartingState = [2,2,0,0,0,0]; % x,y,/psi,u,v,r
-% StartingStateZ = 4;
-moveT = 1;
+p.StartingState = [2,2,pi/4,0,0,0]; % x,y,/psi,u,v,r
+p.StartingStateZ = 4;
+p.moveT = 5;
 
 moveDist = 2; % How far to move for one step
 
-P_k = StartingPosition; % Current robot/sensor position
-P_k_store = P_k;
+p.P_k = [p.StartingState, p.StartingStateZ]; % Current robot/sensor position
+p.P_k_store = p.P_k;
 
 % robot 的位置
-pos.x_matrix = P_k(1);
-pos.y_matrix = P_k(2);
-pos.z_matrix = P_k(3);
+pos.x_matrix = p.P_k(1);
+pos.y_matrix = p.P_k(2);
+pos.z_matrix = p.P_k(7);
 
 D=[]; % store sensor readings
 
@@ -104,7 +104,7 @@ Wpnorm = ones(N,1)/N;
 fig2 = figure;
 hold on
 preprocess(s,theta);
-
+p.hist_ship_states = [];
 
 for i = 1:50
     % 会找100步。
@@ -130,8 +130,9 @@ for i = 1:50
     S(i) = 5+ceil(D(i)*5e4); % size of the marker
     scatter3(theta.x,theta.y,theta.z,3,'g','filled');
     plot3(pos.x_matrix,pos.y_matrix,pos.z_matrix,'ro','MarkerFaceColor','r','MarkerSize',5);
-    plot3(P_k_store(:,1),P_k_store(:,2),P_k_store(:,3),'r-');
-    scatter3(P_k_store(:,1),P_k_store(:,2),P_k_store(:,3),S,'r','MarkerFaceColor','red');
+    plot3(p.P_k_store(:,1),p.P_k_store(:,2),p.P_k_store(:,7),'r-');
+    Z_plotShipXY(p.P_k(1),p.P_k(2),p.P_k(3));
+    scatter3(p.P_k_store(:,1),p.P_k_store(:,2),p.P_k_store(:,7),S,'r','MarkerFaceColor','red');
     view(0,90)
     
     drawnow
@@ -140,14 +141,33 @@ for i = 1:50
 
     % define the action set
     % 1 8 个控制方向 * 3
-    ynew = [[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist] 2*[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist] 3*[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist]]; % [0,moveDist,-moveDist,0]
-    xnew = [[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist] 2*[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist] 3*[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist]]; % [moveDist,0,0,-moveDist]
-    znew = [0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0]; % [0,0,0,0]
+    % ynew = [[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist] 2*[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist] 3*[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist]]; % [0,moveDist,-moveDist,0]
+    % xnew = [[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist] 2*[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist] 3*[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist]]; % [moveDist,0,0,-moveDist]
+    % znew = [0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0]; % [0,0,0,0]
 
-%     control_n1 = [];
-%     control_n2 = [];
-% 
-%     znew = [];
+    
+    p.control_n1 = linspace(-300,300,11);
+    p.control_n2 = linspace(-300,300,11);
+    p.control_a1 = 0;
+    p.control_a2 = 0;
+
+    
+
+    for ii = 1:size(p.control_n1,2)
+        for jj = 1:size(p.control_n2,2)
+            hist_ship_states = simple_sim_with_control_wamv(0,0.1,p.moveT,p.control_n1(ii),p.control_n2(jj),0,0, ...
+            p.P_k(1),p.P_k(2),p.P_k(3),p.P_k(4),p.P_k(5),p.P_k(6));
+            p.hist_ship_states = [p.hist_ship_states; hist_ship_states];
+            p.xnew(i,ii*jj) = hist_ship_states(end,6);
+            p.ynew(i,ii*jj) = hist_ship_states(end,7);
+            p.znew(i,ii*jj) = 0;
+            p.psinew(i,ii*jj) = hist_ship_states(end,8);
+            p.unew(i,ii*jj) = hist_ship_states(end,9);
+            p.vnew(i,ii*jj) = hist_ship_states(end,10);
+            p.rnew(i,ii*jj) = hist_ship_states(end,11);
+            
+        end
+    end
 
 
 
@@ -162,9 +182,9 @@ for i = 1:50
 
     
     % 
-    Xneighbour = zeros(1,size(xnew,2));
-    Yneighbour = zeros(1,size(ynew,2));
-    Zneighbour = zeros(1,size(znew,2));
+    Xneighbour = zeros(1,size(p.xnew,2));
+    Yneighbour = zeros(1,size(p.ynew,2));
+    Zneighbour = zeros(1,size(p.znew,2));
 
     
     
@@ -176,23 +196,28 @@ for i = 1:50
 
 
 
-    reward = zeros(1, size(xnew,2));
+    reward = zeros(1, size(p.xnew,2));
    
-    for k = 1:size(xnew,2)
+    for k = 1:size(p.xnew,2)
 
-        Xneighbour(k) = pos.x_matrix+xnew(k);
-        Yneighbour(k) = pos.y_matrix+ynew(k);
-        Zneighbour(k) = pos.z_matrix+znew(k);
+        Xneighbour(k) = p.xnew(k);
+        Yneighbour(k) = p.ynew(k);
+        Zneighbour(k) = p.znew(k);
         
-        if pos.x_matrix+xnew(k)<xmin || pos.x_matrix+xnew(k)>xmax || pos.y_matrix+ynew(k)<ymin || pos.y_matrix+ynew(k)>ymax || pos.z_matrix+znew(k)<zmin || pos.z_matrix+znew(k)>zmax
+        if p.xnew(k)<xmin || ...
+            p.xnew(k)>xmax || ...
+            p.ynew(k)<ymin || ... 
+            p.ynew(k)>ymax || ... 
+            p.znew(k)<zmin ||  ...
+            p.znew(k)>zmax
             reward(k)=NaN;
             continue
         end
 
 
-        npos.x_matrix = pos.x_matrix+xnew(k);
-        npos.y_matrix = pos.y_matrix+ynew(k);
-        npos.z_matrix = pos.z_matrix+znew(k);
+        npos.x_matrix = p.xnew(k);
+        npos.y_matrix = p.ynew(k);
+        npos.z_matrix = p.znew(k);
 
         infoGain=0;
 
@@ -264,9 +289,10 @@ for i = 1:50
     pos.z_matrix = Zneighbour(ind);
 
     % 在这里加入船的模型，然后实时更新位置。
-    P_k = [pos.x_matrix pos.y_matrix pos.z_matrix];
-
-    P_k_store = [P_k_store; P_k];
+    % p.P_k = [pos.x_matrix pos.y_matrix pos.z_matrix];
+    
+    p.P_k = [p.xnew(ind),p.ynew(ind),p.psinew(ind),p.unew(ind),p.vnew(ind),p.rnew(ind),p.znew(ind)];
+    p.P_k_store = [p.P_k_store; p.P_k];
    
 
     % stop criteria 
