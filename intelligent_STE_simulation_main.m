@@ -1,7 +1,7 @@
 close all
 clear all
-% clc
-
+clc
+%%
 addpath('Functions')
 
 
@@ -11,13 +11,13 @@ addpath('Functions')
 % true source
 s.Q = 5; % Release rate per time unit
 % source coodinates
-s.x = 40;
-s.y = 60;
-s.z= 1;
+s.x = 40; % source x coordinate
+s.y = 60; % source y coordinate
+s.z= 1; % hight
 s.u = 4; % wind speed
 s.phi = 90 * pi/180; % wind direction 
-s.ci = 1;
-s.cii = 8;
+s.ci = 1; % ds 公式（1）中的危险扩散率 1
+s.cii = 8; % ts 发射材料的寿命 8
 
 
 % Create rectangular domain area and draw the plume 
@@ -32,9 +32,9 @@ domain = [xmin xmax ymin ymax zmin zmax]; % Size of search area
 % Plot example dispersion from true source
 fig1 = figure;
 hold on;
-hdl_plume = drawPlume(fig1, s, domain); 
+hdl_plume = drawPlume(fig1, s, domain); % Draw function
 
-% sensor model parameters
+% sensor model parameters 
 m.thresh = 5e-4; % sensor threshold
 m.Pd = 0.7; % probability of detection
 m.sig = 1e-4; % minimun sensor noise
@@ -53,12 +53,17 @@ sigma.cii = 0.5;
 
 % Initialisation and parameters of the mobile sensor
 StartingPosition = [2 2 4]; % Starting position [x,y,z]
-moveDist = 2; % How far to move for one step
+% change 
+% StartingState = [2,2,0,0,0,0]; % x,y,/psi,u,v,r
+% StartingStateZ = 4;
+moveT = 1;
 
+moveDist = 2; % How far to move for one step
 
 P_k = StartingPosition; % Current robot/sensor position
 P_k_store = P_k;
 
+% robot 的位置
 pos.x_matrix = P_k(1);
 pos.y_matrix = P_k(2);
 pos.z_matrix = P_k(3);
@@ -66,25 +71,33 @@ pos.z_matrix = P_k(3);
 D=[]; % store sensor readings
 
 
-
+% 直接把所有点所能观测到的位置算出来，然后当运行到该点的时候能直接观测计算。
 % initialise PF
 N = 20000; % number of particles 
 
-% Uniform prior for location
-theta.x = xmin + (xmax-xmin) * rand(N,1);
+% Uniform prior for location 
+theta.x = xmin + (xmax-xmin) * rand(N,1); 
 theta.y = ymin + (ymax-ymin) * rand(N,1);
-theta.z = 0+5*rand(N,1);
+theta.z = zmin + (zmax-zmin) * rand(N,1);
 
 % Gamma prior for release rate Q
 a = ones(N,1)*2;
 b = ones(N,1)*5;
 theta.Q = gamrnd(a,b);%200*rand(N,1);%
+% 这个污染源是随时间变化的gama分布。
 
-theta.u =s.u + randn(N,1)*2;%2+6*rand(N,1);%0.75+0.5*rand(N,1);0 + randn(N,1)*0.5;%
+% randn标准正太随机分布
+theta.u =s.u + randn(N,1)*2;%2+6*rand(N,1);%0.75+0.5*rand(N,1);0 + randn(N,1)*0.5;
+% theta.phi = s.phi + randn(N,1)*10.*pi/180;%(10 + 30*rand(N,1)).*pi/180;
+
+% 注意phi是风的方向，先做了固定的偏移再加上随机扰动。
 theta.phi = s.phi*0.9 + randn(N,1)*10.*pi/180;%(10 + 30*rand(N,1)).*pi/180;
+% ci和cii还不清楚是什么。
+
 theta.ci = s.ci+2*rand(N,1);%0.12+0.1*rand(N,1);
 theta.cii = s.cii + 2*rand(N,1) - 2;%0.5+ 0.1*rand(N,1);
 
+% 平均化固定值。
 Wpnorm = ones(N,1)/N;
 
 
@@ -93,19 +106,21 @@ hold on
 preprocess(s,theta);
 
 
-for i = 1:100
-    
+for i = 1:50
+    % 会找100步。
     % generate sensor data with added noise and miss-detection
-    Dsim = sensorModel(s, pos, m);
+    Dsim = sensorModel(s, pos, m); %污染源参数+位置+传感器参数
 
 
-    D(i)=Dsim;
+    D(i)=Dsim; %传感器在i步下的读数。传感器的读数其实就是决定了环境模型。
 
     f_dyn = @fDyn;
     h_likeli = @(s, yObv, m) hLikePlume(s, yObv, pos, m);
     g_const = @gCon; 
 
     [theta, Wpnorm, info] = mcmcPF(i, theta, Wpnorm, Dsim, f_dyn, sigma, h_likeli, m, g_const,[]);
+    % Markov chain Monte Carlo particle filter = mcmcPF
+    % 基于马尔科夫链的蒙特卡洛粒子滤波器。
 
     
     figure(fig1)
@@ -124,9 +139,27 @@ for i = 1:100
 
 
     % define the action set
-    ynew = [[0,moveDist,-moveDist,0] 2*[0,moveDist,-moveDist,0] 3*[0,moveDist,-moveDist,0]];
-    xnew = [[moveDist,0,0,-moveDist] 2*[moveDist,0,0,-moveDist] 3*[moveDist,0,0,-moveDist]];
-    znew = [0,0,0,0,0,0,0,0,0,0,0,0];
+    % 1 8 个控制方向 * 3
+    ynew = [[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist] 2*[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist] 3*[0,-moveDist,-moveDist,-moveDist,0,+moveDist,+moveDist,+moveDist]]; % [0,moveDist,-moveDist,0]
+    xnew = [[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist] 2*[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist] 3*[moveDist,moveDist,0,-moveDist,-moveDist,-moveDist,0,+moveDist]]; % [moveDist,0,0,-moveDist]
+    znew = [0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0]; % [0,0,0,0]
+
+%     control_n1 = [];
+%     control_n2 = [];
+% 
+%     znew = [];
+
+
+
+    % 2 4 个控制方向 
+    % ynew = [[0,moveDist,-moveDist,0] 2*[0,moveDist,-moveDist,0] 3*[0,moveDist,-moveDist,0]]; % [0,moveDist,-moveDist,0]
+    % xnew = [[moveDist,0,0,-moveDist] 2*[moveDist,0,0,-moveDist] 3*[moveDist,0,0,-moveDist]]; % [moveDist,0,0,-moveDist]
+    % znew = [0,0,0,0, 0,0,0,0, 0,0,0,0]; % [0,0,0,0]
+
+    % 3 只能前进，不能后退
+
+    % 4 结合运动学模型的运动方向。
+
     
     % 
     Xneighbour = zeros(1,size(xnew,2));
@@ -198,7 +231,7 @@ for i = 1:100
                 %----------------------------------------------------------
                 
                 %----------------------------------------------------------
-                % Entropy
+                % Entropy %基于熵的信息增益
                 % infoGain = infoGain - (-sum(zWpnorm.*log2(zWpnorm+(zWpnorm==0))));
                 %----------------------------------------------------------
 
@@ -209,10 +242,10 @@ for i = 1:100
                 % posPlus = [theta.x(indx), theta.y(indx)]';
                 % posPlus_avg = mean(posPlus,2);
                 % covPlus = cov(posPlus');
-                % 
+                
                 % err_x = posPlus_avg(1)-npos.x_matrix;
                 % err_y = posPlus_avg(2)-npos.y_matrix; 
-                % 
+                
                 % infoGain = infoGain - ((err_x^2+err_y^2) + trace(covPlus));
                 %----------------------------------------------------------
             end
@@ -230,11 +263,11 @@ for i = 1:100
     pos.y_matrix = Yneighbour(ind);
     pos.z_matrix = Zneighbour(ind);
 
+    % 在这里加入船的模型，然后实时更新位置。
     P_k = [pos.x_matrix pos.y_matrix pos.z_matrix];
 
     P_k_store = [P_k_store; P_k];
    
-
 
     % stop criteria 
     [~, indx] = resamplingIndex(Wpnorm);

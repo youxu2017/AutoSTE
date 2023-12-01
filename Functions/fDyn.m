@@ -1,5 +1,5 @@
 function splus = fDyn(s, varargin)
-
+% 更新下一时刻s的参数。通过fDyn函数，
 % k - time steps
 % s - state at k (source term)
 % varargin - process noise 

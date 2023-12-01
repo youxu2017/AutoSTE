@@ -18,7 +18,10 @@ if isstruct(s)
 
     module_dist(module_dist<1e-5)=1e-5;
     
-    C = s.Q./(4*pi.*s.D.*module_dist).*exp((-(p.x_matrix-s.x).*s.u.*cos(s.phi)./(2.*s.D)) + (-(p.y_matrix-s.y).*s.u.*sin(s.phi)./(2.*s.D)) + (-1*module_dist./lamda));
+    C = s.Q./(4*pi.*s.D.*module_dist) ... 
+        .*exp((-(p.x_matrix-s.x).*s.u.*cos(s.phi)./(2.*s.D)) ... 
+        + (-(p.y_matrix-s.y).*s.u.*sin(s.phi)./(2.*s.D))  ...
+        + (-1*module_dist./lamda)); %公式11
 else
     x = s(1,:)';
     y = s(2,:)';
@@ -35,7 +38,10 @@ else
 
     module_dist(module_dist<1e-5)=1e-5;
     
-    C = Q./(4*pi.*D.*module_dist).*exp((-(p.x_matrix-x).*u.*cos(phi)./(2.*D)) + (-(p.y_matrix-y).*u.*sin(phi)./(2.*D)) + (-1*module_dist./lamda));
+    C = Q./(4*pi.*D.*module_dist) ...
+        .*exp((-(p.x_matrix-x).*u.*cos(phi)./(2.*D)) ...
+        + (-(p.y_matrix-y).*u.*sin(phi)./(2.*D)) ...
+        + (-1*module_dist./lamda)); % 公式11
 
 end
 
